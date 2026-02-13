@@ -68,11 +68,21 @@ export async function getOriginalSampleRate(file: File): Promise<number> {
   const u8 = new Uint8Array(buf);
   const dv = new DataView(buf);
 
-  // ── WAV: "RIFF"..."WAVE", sample rate = uint32 LE @ byte 24 ──
+  // ── WAV: "RIFF"..."WAVE", walk chunks to find "fmt " ──
   if (u8.length > 44
     && u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46   // RIFF
     && u8[8] === 0x57 && u8[9] === 0x41 && u8[10] === 0x56 && u8[11] === 0x45) { // WAVE
-    return dv.getUint32(24, true);
+    let pos = 12;
+    while (pos + 8 < u8.length) {
+      const id = String.fromCharCode(u8[pos], u8[pos + 1], u8[pos + 2], u8[pos + 3]);
+      const size = dv.getUint32(pos + 4, true);
+      if (id === 'fmt ' && pos + 12 + 4 <= u8.length) {
+        // fmt chunk: +8 audioFormat(2) +10 channels(2) +12 sampleRate(4)
+        return dv.getUint32(pos + 12, true);
+      }
+      pos += 8 + size;
+      if (size % 2 !== 0) pos++; // RIFF chunks are word-aligned
+    }
   }
 
   // ── FLAC: "fLaC", STREAMINFO sample rate = 20 bits @ byte 18 ──
