@@ -15,6 +15,7 @@ export function WaveformPlayer({ file, audioData }: Props) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [volume, setVolume] = useState(1);
 
   // Precomputed waveform peaks (min/max per pixel column)
   const peaksRef = useRef<{ min: number; max: number }[]>([]);
@@ -33,6 +34,12 @@ export function WaveformPlayer({ file, audioData }: Props) {
   }, []);
 
   const handleEnded = useCallback(() => setIsPlaying(false), []);
+
+  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value);
+    setVolume(v);
+    if (audioRef.current) audioRef.current.volume = v;
+  }, []);
 
   // Compute peaks when audioData or canvas size changes
   const computePeaks = useCallback((width: number) => {
@@ -81,9 +88,12 @@ export function WaveformPlayer({ file, audioData }: Props) {
 
     if (peaks.length === 0) return;
 
-    // Draw unplayed portion (dim)
-    ctx.strokeStyle = 'rgba(99, 102, 241, 0.35)';
-    ctx.lineWidth = 1;
+    // Draw unplayed portion (dim glow)
+    ctx.save();
+    ctx.shadowColor = 'rgba(99, 102, 241, 0.5)';
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = 'rgba(99, 102, 241, 0.4)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let x = playedX; x < peaks.length; x++) {
       const y1 = mid + peaks[x].min * mid;
@@ -92,10 +102,14 @@ export function WaveformPlayer({ file, audioData }: Props) {
       ctx.lineTo(x, y2);
     }
     ctx.stroke();
+    ctx.restore();
 
-    // Draw played portion (bright)
-    ctx.strokeStyle = '#818cf8';
-    ctx.lineWidth = 1;
+    // Draw played portion (bright glow)
+    ctx.save();
+    ctx.shadowColor = '#818cf8';
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#a5b4fc';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let x = 0; x < playedX && x < peaks.length; x++) {
       const y1 = mid + peaks[x].min * mid;
@@ -104,15 +118,25 @@ export function WaveformPlayer({ file, audioData }: Props) {
       ctx.lineTo(x, y2);
     }
     ctx.stroke();
+    // Second pass for extra bloom
+    ctx.shadowBlur = 24;
+    ctx.shadowColor = 'rgba(129, 140, 248, 0.4)';
+    ctx.strokeStyle = 'rgba(165, 180, 252, 0.5)';
+    ctx.stroke();
+    ctx.restore();
 
-    // Playhead line
+    // Playhead line (glowing)
     if (progress > 0 && progress < 1) {
+      ctx.save();
+      ctx.shadowColor = '#e4e4e7';
+      ctx.shadowBlur = 8;
       ctx.strokeStyle = '#e4e4e7';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(playedX, 0);
       ctx.lineTo(playedX, height);
       ctx.stroke();
+      ctx.restore();
     }
 
     // Zero line
@@ -176,6 +200,13 @@ export function WaveformPlayer({ file, audioData }: Props) {
     setIsPlaying(!isPlaying);
   }, [isPlaying]);
 
+  const restart = useCallback(() => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = 0;
+    setCurrentTime(0);
+    draw(0);
+  }, [draw]);
+
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!audioRef.current || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -204,21 +235,77 @@ export function WaveformPlayer({ file, audioData }: Props) {
         onEnded={handleEnded}
       />
 
-      <div className="waveform-controls">
-        <button className="play-btn" onClick={togglePlay}>
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-        <span className="audio-time">
-          {fmt(currentTime)} / {fmt(duration)}
-        </span>
-      </div>
-
       <div className="waveform-canvas-wrap">
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
-          style={{ width: '100%', height: '100%', cursor: 'pointer', borderRadius: 4 }}
+          style={{ width: '100%', height: '100%', cursor: 'pointer' }}
         />
+      </div>
+
+      <div className="player-toolbar">
+        <div className="player-toolbar-left">
+          <button className="player-btn" onClick={restart} title="最初に戻す">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="19,20 9,12 19,4" />
+              <line x1="5" y1="4" x2="5" y2="20" />
+            </svg>
+          </button>
+          <button className="player-btn player-btn-play" onClick={togglePlay} title={isPlaying ? '一時停止' : '再生'}>
+            {isPlaying ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="3" width="5" height="18" rx="1" />
+                <rect x="14" y="3" width="5" height="18" rx="1" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="6,3 20,12 6,21" />
+              </svg>
+            )}
+          </button>
+        </div>
+
+        <span className="player-time">
+          {fmt(currentTime)} <span className="player-time-sep">/</span> {fmt(duration)}
+        </span>
+
+        <div className="player-toolbar-right">
+          <button
+            className="player-btn player-btn-vol"
+            onClick={() => {
+              const next = volume > 0 ? 0 : 1;
+              setVolume(next);
+              if (audioRef.current) audioRef.current.volume = next;
+            }}
+            title={volume === 0 ? 'ミュート解除' : 'ミュート'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11,5 6,9 2,9 2,15 6,15 11,19" fill="currentColor" stroke="none" />
+              {volume === 0 ? (
+                <>
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
+                </>
+              ) : volume < 0.5 ? (
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              ) : (
+                <>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                </>
+              )}
+            </svg>
+          </button>
+          <input
+            type="range"
+            className="volume-slider"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={handleVolumeChange}
+          />
+        </div>
       </div>
     </div>
   );

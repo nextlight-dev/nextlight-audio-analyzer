@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { DetailView } from './DetailView';
 import { BatchView } from './BatchView';
+import { ReferenceView } from './ReferenceView';
+import { BpmKeyView } from './BpmKeyView';
 
-type Tab = 'detail' | 'batch';
+type Tab = 'detail' | 'batch' | 'reference' | 'bpmkey';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('detail');
@@ -32,10 +34,24 @@ export function App() {
         >
           バッチ比較
         </button>
+        <button
+          className={`tab-item ${activeTab === 'reference' ? 'active' : ''}`}
+          onClick={() => setActiveTab('reference')}
+        >
+          リファレンス比較
+        </button>
+        <button
+          className={`tab-item ${activeTab === 'bpmkey' ? 'active' : ''}`}
+          onClick={() => setActiveTab('bpmkey')}
+        >
+          BPM / Key
+        </button>
       </nav>
 
       {activeTab === 'detail' && <DetailView />}
       {activeTab === 'batch' && <BatchView />}
+      {activeTab === 'reference' && <ReferenceView />}
+      {activeTab === 'bpmkey' && <BpmKeyView />}
     </div>
   );
 }

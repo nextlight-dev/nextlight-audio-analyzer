@@ -1,4 +1,4 @@
-import type { AnalysisResult, WorkerResponse } from './types';
+import type { AnalysisResult, BpmKeyResult, WorkerResponse } from './types';
 
 // Singleton Worker — WASM initialization happens only once
 let sharedWorker: Worker | null = null;
@@ -52,6 +52,36 @@ export class AudioAnalyzer {
 
   init(): Promise<string> {
     return ensureInit();
+  }
+
+  analyzeBpmKey(audioData: Float32Array, sampleRate: number): Promise<BpmKeyResult> {
+    if (!workerReady) {
+      return Promise.reject(new Error('Analyzer not initialized'));
+    }
+
+    const worker = getWorker();
+
+    return new Promise((resolve, reject) => {
+      const handler = (e: MessageEvent<WorkerResponse>) => {
+        const msg = e.data;
+        if (msg.type === 'progress') {
+          this.onProgress(msg.phase ?? '', msg.percent ?? 0, msg.label ?? '');
+        } else if (msg.type === 'bpmKeyComplete' && msg.bpmKeyData) {
+          worker.removeEventListener('message', handler);
+          resolve(msg.bpmKeyData);
+        } else if (msg.type === 'error') {
+          worker.removeEventListener('message', handler);
+          reject(new Error(msg.message));
+        }
+      };
+      worker.addEventListener('message', handler);
+
+      const data = new Float32Array(audioData);
+      worker.postMessage(
+        { type: 'analyzeBpmKey', audioData: data, sampleRate },
+        [data.buffer],
+      );
+    });
   }
 
   analyze(audioData: Float32Array, sampleRate: number, leftChannel?: Float32Array, rightChannel?: Float32Array): Promise<void> {

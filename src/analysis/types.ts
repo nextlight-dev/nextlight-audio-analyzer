@@ -34,6 +34,14 @@ export interface QualityResult {
   tailSilence: number;
 }
 
+export interface BpmKeyResult {
+  bpm: number;
+  bpmConfidence: number;
+  key: string;
+  scale: string;
+  keyStrength: number;
+}
+
 export type AnalysisPhase =
   | 'init'
   | 'decoding'
@@ -48,7 +56,7 @@ export interface ProgressState {
 }
 
 export interface WorkerMessage {
-  type: 'init' | 'analyze';
+  type: 'init' | 'analyze' | 'analyzeBpmKey';
   audioData?: Float32Array;
   leftChannel?: Float32Array;
   rightChannel?: Float32Array;
@@ -56,11 +64,12 @@ export interface WorkerMessage {
 }
 
 export interface WorkerResponse {
-  type: 'ready' | 'progress' | 'partial' | 'complete' | 'error';
+  type: 'ready' | 'progress' | 'partial' | 'complete' | 'error' | 'bpmKeyComplete';
   phase?: string;
   percent?: number;
   label?: string;
   data?: Partial<AnalysisResult>;
+  bpmKeyData?: BpmKeyResult;
   message?: string;
   version?: string;
 }

@@ -129,6 +129,133 @@ function runAnalysis(sampleRate: number, leftChannel: Float32Array, rightChannel
   });
 }
 
+function runBpmKeyAnalysis(audioData: Float32Array, sampleRate: number) {
+  postProgress('phase1', 10, 'BPM解析中...');
+
+  const signal = essentia.arrayToVector(audioData);
+
+  // ── BPM detection ──
+  // RhythmExtractor2013 を第一候補（信頼度付き）
+  let bpm = 0;
+  let bpmConfidence = 0;
+  try {
+    const rhythmResult = essentia.RhythmExtractor2013(signal, 208, 'multifeature', 40);
+    bpm = rhythmResult.bpm ?? 0;
+    bpmConfidence = rhythmResult.confidence ?? 0;
+    if (rhythmResult.ticks) rhythmResult.ticks.delete();
+    if (rhythmResult.estimates) rhythmResult.estimates.delete();
+    if (rhythmResult.bpmIntervals) rhythmResult.bpmIntervals.delete();
+  } catch (e) {
+    console.warn('RhythmExtractor2013 failed, trying PercivalBpmEstimator:', e);
+    try {
+      const bpmResult = essentia.PercivalBpmEstimator(signal, 1024, 2048, 128, 128, 210, 50, sampleRate);
+      bpm = bpmResult.bpm ?? 0;
+    } catch (e2) {
+      console.warn('PercivalBpmEstimator also failed:', e2);
+    }
+  }
+
+  postProgress('phase1', 50, 'Key解析中...');
+
+  // ── Key detection ──
+  // KeyExtractor: 正しいパラメータ順序で呼び出し
+  // KeyExtractor(audio, averageDetuningCorrection, frameSize, hopSize, hpcpSize,
+  //   maxFrequency, maximumSpectralPeaks, minFrequency, pcpThreshold,
+  //   profileType, sampleRate, spectralPeaksThreshold, tuningFrequency,
+  //   weightType, windowType)
+  let key = '';
+  let scale = '';
+  let keyStrength = 0;
+  try {
+    const keyResult = essentia.KeyExtractor(
+      signal,
+      true,       // averageDetuningCorrection
+      4096,       // frameSize
+      4096,       // hopSize
+      12,         // hpcpSize
+      3500,       // maxFrequency
+      60,         // maximumSpectralPeaks
+      25,         // minFrequency
+      0.2,        // pcpThreshold
+      'bgate',    // profileType
+      sampleRate, // sampleRate
+      0.0001,     // spectralPeaksThreshold (was 0.5 — too high!)
+      440,        // tuningFrequency (was 500 — wrong!)
+      'cosine',   // weightType
+      'hann',     // windowType (was 'cosine' — invalid!)
+    );
+    key = keyResult.key ?? '';
+    scale = keyResult.scale ?? '';
+    keyStrength = keyResult.strength ?? 0;
+  } catch (e) {
+    console.warn('KeyExtractor failed, trying frame-by-frame HPCP+Key:', e);
+    try {
+      // Fallback: フレーム単位で HPCP を計算して平均 → Key
+      const frameSize = 4096;
+      const hopSize = 2048;
+      const numFrames = Math.floor((audioData.length - frameSize) / hopSize) + 1;
+      const hpcpSize = 12;
+      const avgHpcp = new Float32Array(hpcpSize);
+      let validFrames = 0;
+
+      for (let f = 0; f < numFrames; f++) {
+        const start = f * hopSize;
+        const frameData = audioData.slice(start, start + frameSize);
+
+        // Apply Hann window
+        for (let i = 0; i < frameData.length; i++) {
+          frameData[i] *= 0.5 * (1 - Math.cos((2 * Math.PI * i) / (frameData.length - 1)));
+        }
+
+        const frameVec = essentia.arrayToVector(frameData);
+        const spec = essentia.Spectrum(frameVec);
+        const peaks = essentia.SpectralPeaks(spec.spectrum);
+        const hpcp = essentia.HPCP(peaks.frequencies, peaks.magnitudes,
+          true, 500, 0, 5000, false, 40, false, 'unitMax', 440, sampleRate, hpcpSize, 'squaredCosine', 1);
+
+        const hpcpArr = essentia.vectorToArray(hpcp.hpcp);
+        for (let i = 0; i < hpcpSize; i++) {
+          avgHpcp[i] += hpcpArr[i];
+        }
+        validFrames++;
+
+        frameVec.delete();
+        spec.spectrum.delete();
+        peaks.frequencies.delete();
+        peaks.magnitudes.delete();
+        hpcp.hpcp.delete();
+
+        // 進捗更新（重いので間引き）
+        if (f % 50 === 0) {
+          postProgress('phase1', 50 + Math.round((f / numFrames) * 30), 'HPCP計算中...');
+        }
+      }
+
+      if (validFrames > 0) {
+        for (let i = 0; i < hpcpSize; i++) {
+          avgHpcp[i] /= validFrames;
+        }
+        const avgVec = essentia.arrayToVector(avgHpcp);
+        const keyOut = essentia.Key(avgVec, 4, 36, 'bgate', 0.6, false, true, true);
+        key = keyOut.key ?? '';
+        scale = keyOut.scale ?? '';
+        keyStrength = keyOut.strength ?? 0;
+        avgVec.delete();
+      }
+    } catch (e2) {
+      console.warn('Frame-by-frame HPCP+Key also failed:', e2);
+    }
+  }
+
+  signal.delete();
+  postProgress('phase1', 90, '結果まとめ中...');
+
+  self.postMessage({
+    type: 'bpmKeyComplete',
+    bpmKeyData: { bpm, bpmConfidence, key, scale, keyStrength },
+  });
+}
+
 function runQualityCheck(audioData: Float32Array, sampleRate: number) {
   const THRESHOLD = 0.001;
 
@@ -183,6 +310,16 @@ self.onmessage = async (event: MessageEvent) => {
       self.postMessage({ type: 'complete' });
     } catch (e: any) {
       self.postMessage({ type: 'error', message: `解析エラー: ${e.message}` });
+    }
+  }
+
+  if (type === 'analyzeBpmKey' && audioData && sampleRate) {
+    try {
+      runBpmKeyAnalysis(audioData, sampleRate);
+      postProgress('done', 100, '解析完了');
+      self.postMessage({ type: 'complete' });
+    } catch (e: any) {
+      self.postMessage({ type: 'error', message: `BPM/Key解析エラー: ${e.message}` });
     }
   }
 };
