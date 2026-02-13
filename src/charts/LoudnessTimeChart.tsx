@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -20,6 +21,10 @@ interface Props {
 }
 
 export function LoudnessTimeChart({ momentary, shortTerm, integratedLUFS, duration }: Props) {
+  const [showMomentary, setShowMomentary] = useState(true);
+  const [showShortTerm, setShowShortTerm] = useState(true);
+  const [showIntegrated, setShowIntegrated] = useState(true);
+
   if (momentary.length === 0 && shortTerm.length === 0) return null;
 
   const downsample = (arr: number[], maxPoints: number) => {
@@ -50,12 +55,29 @@ export function LoudnessTimeChart({ momentary, shortTerm, integratedLUFS, durati
       <summary className="chart-title">
         Loudness (時系列) — Integrated: {isFinite(integratedLUFS) ? `${integratedLUFS.toFixed(1)} LUFS` : '---'}
       </summary>
+      <div className="chart-toggles">
+        <button
+          className={`chart-toggle ${showMomentary ? 'active' : ''}`}
+          style={{ '--toggle-color': 'rgba(99, 102, 241, 0.6)' } as React.CSSProperties}
+          onClick={() => setShowMomentary(v => !v)}
+        >Momentary</button>
+        <button
+          className={`chart-toggle ${showShortTerm ? 'active' : ''}`}
+          style={{ '--toggle-color': '#22c55e' } as React.CSSProperties}
+          onClick={() => setShowShortTerm(v => !v)}
+        >Short-term</button>
+        <button
+          className={`chart-toggle ${showIntegrated ? 'active' : ''}`}
+          style={{ '--toggle-color': '#ef4444' } as React.CSSProperties}
+          onClick={() => setShowIntegrated(v => !v)}
+        >Integrated</button>
+      </div>
       <div className="chart-container tall">
         <Line
           data={{
             labels,
             datasets: [
-              ...(dsMomentary.length > 0 ? [{
+              ...(showMomentary && dsMomentary.length > 0 ? [{
                 label: 'Momentary (LUFS)',
                 data: dsMomentary,
                 borderColor: 'rgba(99, 102, 241, 0.6)',
@@ -65,7 +87,7 @@ export function LoudnessTimeChart({ momentary, shortTerm, integratedLUFS, durati
                 fill: true,
                 tension: 0.2,
               }] : []),
-              ...(dsShortTerm.length > 0 ? [{
+              ...(showShortTerm && dsShortTerm.length > 0 ? [{
                 label: 'Short-term (LUFS)',
                 data: dsShortTerm,
                 borderColor: '#22c55e',
@@ -75,7 +97,7 @@ export function LoudnessTimeChart({ momentary, shortTerm, integratedLUFS, durati
                 fill: false,
                 tension: 0.2,
               }] : []),
-              ...(integratedLine ? [{
+              ...(showIntegrated && integratedLine ? [{
                 label: 'Integrated (LUFS)',
                 data: integratedLine,
                 borderColor: '#ef4444',

@@ -59,11 +59,64 @@ export function getFileFormat(name: string): string {
   return formats[ext] ?? ext.toUpperCase();
 }
 
+/**
+ * ファイルヘッダーを直接パースしてオリジナルのサンプルレートを取得する。
+ * AudioContext.decodeAudioData はコンテキストの SR にリサンプリングするため使えない。
+ */
 export async function getOriginalSampleRate(file: File): Promise<number> {
-  const arrayBuffer = await file.arrayBuffer();
+  const buf = await file.arrayBuffer();
+  const u8 = new Uint8Array(buf);
+  const dv = new DataView(buf);
+
+  // ── WAV: "RIFF"..."WAVE", sample rate = uint32 LE @ byte 24 ──
+  if (u8.length > 44
+    && u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46   // RIFF
+    && u8[8] === 0x57 && u8[9] === 0x41 && u8[10] === 0x56 && u8[11] === 0x45) { // WAVE
+    return dv.getUint32(24, true);
+  }
+
+  // ── FLAC: "fLaC", STREAMINFO sample rate = 20 bits @ byte 18 ──
+  if (u8.length > 21
+    && u8[0] === 0x66 && u8[1] === 0x4C && u8[2] === 0x61 && u8[3] === 0x43) { // fLaC
+    return (u8[18] << 12) | (u8[19] << 4) | (u8[20] >> 4);
+  }
+
+  // ── MP3: skip ID3v2 tag, then find frame sync ──
+  let mp3Off = 0;
+  if (u8.length > 10 && u8[0] === 0x49 && u8[1] === 0x44 && u8[2] === 0x33) { // "ID3"
+    mp3Off = 10 + ((u8[6] & 0x7F) << 21 | (u8[7] & 0x7F) << 14 | (u8[8] & 0x7F) << 7 | u8[9] & 0x7F);
+  }
+  const mp3End = Math.min(u8.length - 4, mp3Off + 4096);
+  for (let i = mp3Off; i < mp3End; i++) {
+    if (u8[i] === 0xFF && (u8[i + 1] & 0xE0) === 0xE0) {
+      const ver = (u8[i + 1] >> 3) & 3;
+      const layer = (u8[i + 1] >> 1) & 3;
+      const srIdx = (u8[i + 2] >> 2) & 3;
+      if (layer > 0 && srIdx < 3 && ver !== 1) {
+        const table: Record<number, number[]> = {
+          3: [44100, 48000, 32000],   // MPEG1
+          2: [22050, 24000, 16000],   // MPEG2
+          0: [11025, 12000, 8000],    // MPEG2.5
+        };
+        if (table[ver]) return table[ver][srIdx];
+      }
+    }
+  }
+
+  // ── OGG Vorbis: find "\x01vorbis", sample rate = uint32 LE @ +12 ──
+  const oggEnd = Math.min(u8.length - 16, 8192);
+  for (let i = 0; i < oggEnd; i++) {
+    if (u8[i] === 0x01
+      && u8[i + 1] === 0x76 && u8[i + 2] === 0x6F && u8[i + 3] === 0x72
+      && u8[i + 4] === 0x62 && u8[i + 5] === 0x69 && u8[i + 6] === 0x73) { // \x01vorbis
+      return dv.getUint32(i + 12, true);
+    }
+  }
+
+  // ── Fallback: AudioContext (ハードウェアSRに依存、不正確な場合あり) ──
   const ctx = new AudioContext();
-  const buf = await ctx.decodeAudioData(arrayBuffer);
-  const sr = buf.sampleRate;
+  const decoded = await ctx.decodeAudioData(buf.slice(0));
+  const sr = decoded.sampleRate;
   await ctx.close();
   return sr;
 }

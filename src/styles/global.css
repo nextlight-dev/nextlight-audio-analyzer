@@ -446,6 +446,31 @@ body {
   color: var(--text-secondary);
 }
 
+.chart-toggles {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.chart-toggle {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  opacity: 0.5;
+}
+
+.chart-toggle.active {
+  opacity: 1;
+  color: var(--toggle-color);
+  border-color: var(--toggle-color);
+  background: color-mix(in srgb, var(--toggle-color) 10%, transparent);
+}
+
 .chart-container {
   position: relative;
   width: 100%;
