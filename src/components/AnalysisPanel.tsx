@@ -86,7 +86,7 @@ export function AnalysisPanel({ result, fileInfo }: Props) {
       {/* ── 警告 ── */}
       {warnings.length > 0 && (
         <section className="panel-section">
-          <div className="panel-title">警告</div>
+          <div className="panel-title">警告(現状はRenoの意図と全然違う〜!!)</div>
           <ul className="warning-list">
             {warnings.map((w, i) => (
               <li key={i} className={`warning-item warning-${w.level}`}>{w.msg}</li>
