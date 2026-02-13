@@ -28,94 +28,167 @@ export function AnalysisPanel({ result, fileInfo }: Props) {
   const stereo = result?.stereo ?? null;
   const quality = result?.quality ?? null;
 
+  // 色分け: OK=緑, 警告=黄, NG=赤
+  const ok = 'var(--success)';
+  const warn = 'var(--warning)';
+  const ng = 'var(--danger)';
+
+  // 基本情報
+  const durationColor = fileInfo
+    ? (fileInfo.duration >= 120 && fileInfo.duration <= 210 ? ok : warn)
+    : undefined;
+  const srColor = fileInfo
+    ? (fileInfo.sampleRate === 48000 ? ok : warn)
+    : undefined;
+  const chColor = fileInfo
+    ? (fileInfo.channels >= 2 ? ok : warn)
+    : undefined;
+  const fmtColor = fileInfo
+    ? (fileInfo.format === 'WAV' ? ok : warn)
+    : undefined;
+
+  // オーディオ解析
   const lufsColor = loudness
-    ? (loudness.integratedLUFS > -8 ? 'var(--danger)'
-      : loudness.integratedLUFS > -14 ? 'var(--warning)'
-      : 'var(--success)')
+    ? (loudness.integratedLUFS > -6 ? ng
+      : loudness.integratedLUFS < -9 ? warn
+      : ok)
     : undefined;
-
   const tpColor = loudness
-    ? (loudness.truePeakDBTP > -1.0 ? 'var(--danger)'
-      : loudness.truePeakDBTP > -2.0 ? 'var(--warning)'
-      : 'var(--text-primary)')
+    ? (loudness.truePeakDBTP > 1.5 ? ng : ok)
+    : undefined;
+  const lrColor = loudness
+    ? (loudness.loudnessRange < 2.5 || loudness.loudnessRange > 6.0 ? warn : ok)
+    : undefined;
+  const widthPercent = stereo ? Math.min(stereo.width * 100, 200) : null;
+  const swColor = stereo
+    ? (widthPercent! < 20 || widthPercent! > 60 ? warn : ok)
     : undefined;
 
-  const widthPercent = stereo ? Math.min(stereo.width * 100, 200) : null;
-  const widthLabel = stereo
-    ? (stereo.width < 0.05 ? 'Mono'
-      : stereo.width < 0.3 ? 'Narrow'
-      : stereo.width < 0.7 ? 'Moderate'
-      : stereo.width < 1.0 ? 'Wide'
-      : 'Very Wide')
-    : '';
+  // クオリティチェック
+  const startColor = quality
+    ? (quality.startIsZero ? ok : warn)
+    : undefined;
+  const endColor = quality
+    ? (quality.endIsZero ? ok : warn)
+    : undefined;
+  const headColor = quality
+    ? (quality.headSilence > 1.0 ? warn : ok)
+    : undefined;
+  const tailColor = quality
+    ? (quality.tailSilence > 1.0 ? warn : ok)
+    : undefined;
 
-  // 警告収集
-  const warnings: { level: 'danger' | 'warning'; msg: string }[] = [];
+  // 分析結果コメント収集
+  const comments: { level: 'safe' | 'danger' | 'warning'; msg: string }[] = [];
+  if (fileInfo) {
+    // 曲の長さ: 2:00 - 3:30
+    if (fileInfo.duration < 120) {
+      comments.push({ level: 'warning', msg: `曲がちょっと短めかも...! (${formatDuration(fileInfo.duration)}) 2:00〜3:30 くらいが目安` });
+    } else if (fileInfo.duration > 210) {
+      comments.push({ level: 'warning', msg: `曲がちょっと長めかも...! (${formatDuration(fileInfo.duration)}) 2:00〜3:30 くらいが目安` });
+    } else {
+      comments.push({ level: 'safe', msg: `曲の長さはいい感じ! (${formatDuration(fileInfo.duration)})` });
+    }
+    // サンプルレート: 48000Hz
+    if (fileInfo.sampleRate !== 48000) {
+      comments.push({ level: 'warning', msg: `サンプルレートが ${fileInfo.sampleRate.toLocaleString()} Hz になってる...! 48,000 Hz が推奨` });
+    } else {
+      comments.push({ level: 'safe', msg: `サンプルレートは 48,000 Hz でOK!` });
+    }
+    // チャンネル: Stereo
+    if (fileInfo.channels < 2) {
+      comments.push({ level: 'warning', msg: `モノラルになってるかも...! ステレオが推奨` });
+    } else {
+      comments.push({ level: 'safe', msg: `ステレオでOK!` });
+    }
+    // フォーマット: WAV
+    if (fileInfo.format !== 'WAV') {
+      comments.push({ level: 'warning', msg: `フォーマットが ${fileInfo.format} になってる...! WAV が推奨` });
+    } else {
+      comments.push({ level: 'safe', msg: `WAV フォーマットでOK!` });
+    }
+  }
   if (loudness) {
-    if (loudness.truePeakDBTP > 0) {
-      warnings.push({ level: 'danger', msg: `True Peak が 0 dBTP を超過 (${loudness.truePeakDBTP.toFixed(1)} dBTP) — クリッピングの可能性` });
-    } else if (loudness.truePeakDBTP > -1.0) {
-      warnings.push({ level: 'danger', msg: `True Peak が -1.0 dBTP を超過 (${loudness.truePeakDBTP.toFixed(1)} dBTP) — 配信規格を満たしません` });
+    // LUFS: -9 ~ -6
+    if (loudness.integratedLUFS > -6) {
+      comments.push({ level: 'danger', msg: `かなり音圧高めかも...! (${loudness.integratedLUFS.toFixed(1)} LUFS) -9〜-6 LUFS くらいが目安` });
+    } else if (loudness.integratedLUFS < -9) {
+      comments.push({ level: 'warning', msg: `ちょっと音圧低めかも...! (${loudness.integratedLUFS.toFixed(1)} LUFS) -9〜-6 LUFS くらいが目安` });
+    } else {
+      comments.push({ level: 'safe', msg: `音圧はいい感じ! (${loudness.integratedLUFS.toFixed(1)} LUFS)` });
     }
-    if (loudness.integratedLUFS > -8) {
-      warnings.push({ level: 'danger', msg: `Integrated LUFS が非常に高い (${loudness.integratedLUFS.toFixed(1)} LUFS) — 過度なコンプレッション` });
-    } else if (loudness.integratedLUFS > -14) {
-      warnings.push({ level: 'warning', msg: `Integrated LUFS がストリーミング推奨値 (-14 LUFS) を超過 (${loudness.integratedLUFS.toFixed(1)} LUFS)` });
+    // True Peak: +1.5以内
+    if (loudness.truePeakDBTP > 1.5) {
+      comments.push({ level: 'danger', msg: `True Peak が +1.5 dBTP 超えちゃってる...! (${loudness.truePeakDBTP.toFixed(1)} dBTP)` });
+    } else {
+      comments.push({ level: 'safe', msg: `True Peak は範囲内でOK! (${loudness.truePeakDBTP.toFixed(1)} dBTP)` });
     }
-    if (loudness.loudnessRange < 3) {
-      warnings.push({ level: 'warning', msg: `Loudness Range が非常に狭い (${loudness.loudnessRange.toFixed(1)} LU) — ダイナミクス不足` });
+    // Loudness Range: 2.5 ~ 6.0
+    if (loudness.loudnessRange < 2.5) {
+      comments.push({ level: 'warning', msg: `ちょっとダイナミクス少ないかも...! (${loudness.loudnessRange.toFixed(1)} LU) 2.5〜6.0 LU くらいが目安` });
+    } else if (loudness.loudnessRange > 6.0) {
+      comments.push({ level: 'warning', msg: `ダイナミクスがちょっと広めかも...! (${loudness.loudnessRange.toFixed(1)} LU) 2.5〜6.0 LU くらいが目安` });
+    } else {
+      comments.push({ level: 'safe', msg: `ダイナミクスもいい感じ! (${loudness.loudnessRange.toFixed(1)} LU)` });
+    }
+  }
+  if (stereo) {
+    // Stereo Width: 20 ~ 60%
+    const w = Math.min(stereo.width * 100, 200);
+    if (w < 20) {
+      comments.push({ level: 'warning', msg: `ステレオ幅がちょっと狭いかも...! (${w.toFixed(0)}%) 20〜60% くらいが目安` });
+    } else if (w > 60) {
+      comments.push({ level: 'warning', msg: `ステレオ幅がちょっと広めかも...! (${w.toFixed(0)}%) 20〜60% くらいが目安` });
+    } else {
+      comments.push({ level: 'safe', msg: `ステレオ幅もいい感じ! (${w.toFixed(0)}%)` });
     }
   }
   if (quality) {
+    // 先頭サンプル
     if (!quality.startIsZero) {
-      warnings.push({ level: 'warning', msg: `先頭サンプルが非ゼロ (${quality.startAmplitude.toFixed(4)}) — クリックノイズの原因に` });
+      comments.push({ level: 'warning', msg: `先頭のサンプルがゼロじゃないかも...! (${quality.startAmplitude.toFixed(4)}) クリックノイズの原因になるかも` });
+    } else {
+      comments.push({ level: 'safe', msg: `先頭サンプルはゼロでOK!` });
     }
+    // 末尾サンプル
     if (!quality.endIsZero) {
-      warnings.push({ level: 'warning', msg: `末尾サンプルが非ゼロ (${quality.endAmplitude.toFixed(4)}) — クリックノイズの原因に` });
+      comments.push({ level: 'warning', msg: `末尾のサンプルがゼロじゃないかも...! (${quality.endAmplitude.toFixed(4)}) クリックノイズの原因になるかも` });
+    } else {
+      comments.push({ level: 'safe', msg: `末尾サンプルもゼロでOK!` });
     }
-    if (quality.headSilence > 0.5) {
-      warnings.push({ level: 'warning', msg: `冒頭に ${quality.headSilence.toFixed(2)} 秒の無音区間` });
+    // 冒頭無音: 1秒以内
+    if (quality.headSilence > 1.0) {
+      comments.push({ level: 'warning', msg: `冒頭に ${quality.headSilence.toFixed(2)} 秒の無音があるかも...! 1秒以内が目安` });
     }
-    if (quality.tailSilence > 2.0) {
-      warnings.push({ level: 'warning', msg: `末尾に ${quality.tailSilence.toFixed(2)} 秒の無音区間` });
+    // 末尾無音: 1秒以内
+    if (quality.tailSilence > 1.0) {
+      comments.push({ level: 'warning', msg: `末尾に ${quality.tailSilence.toFixed(2)} 秒の無音があるかも...! 1秒以内が目安` });
     }
   }
 
   return (
     <div className="panel">
-      {/* ── 警告 ── */}
-      {warnings.length > 0 && (
-        <section className="panel-section">
-          <div className="panel-title">警告(現状はRenoの意図と全然違う〜!!)</div>
-          <ul className="warning-list">
-            {warnings.map((w, i) => (
-              <li key={i} className={`warning-item warning-${w.level}`}>{w.msg}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {/* ── 基本情報 ── */}
       <section className="panel-section">
         <div className="panel-title">基本情報</div>
         <div className="metric-grid">
           <div className="metric">
             <Label text="長さ" tip="オーディオファイルの総再生時間" />
-            <div className="metric-value small">{fileInfo ? formatDuration(fileInfo.duration) : DASH}</div>
+            <div className="metric-value" style={{ color: durationColor }}>{fileInfo ? formatDuration(fileInfo.duration) : DASH}</div>
           </div>
           <div className="metric">
             <Label text="サンプルレート" tip="1秒あたりのサンプル数。値が高いほど高音質" />
-            <div className="metric-value small">
+            <div className="metric-value" style={{ color: srColor }}>
               {fileInfo ? <>{fileInfo.sampleRate.toLocaleString()}<span className="metric-unit">Hz</span></> : DASH}
             </div>
           </div>
           <div className="metric">
             <Label text="チャンネル" tip="Mono: 1チャンネル、Stereo: 左右2チャンネル" />
-            <div className="metric-value small">{fileInfo ? (fileInfo.channels === 1 ? 'Mono' : 'Stereo') : DASH}</div>
+            <div className="metric-value" style={{ color: chColor }}>{fileInfo ? (fileInfo.channels === 1 ? 'Mono' : 'Stereo') : DASH}</div>
           </div>
           <div className="metric">
             <Label text="フォーマット" tip="オーディオファイルの形式（WAV, MP3, FLAC等）" />
-            <div className="metric-value small">{fileInfo?.format ?? DASH}</div>
+            <div className="metric-value" style={{ color: fmtColor }}>{fileInfo?.format ?? DASH}</div>
           </div>
         </div>
       </section>
@@ -137,22 +210,18 @@ export function AnalysisPanel({ result, fileInfo }: Props) {
               {loudness ? (isFinite(loudness.truePeakDBTP) ? loudness.truePeakDBTP.toFixed(1) : '---') : DASH}
               {loudness && <span className="metric-unit">dBTP</span>}
             </div>
-            {loudness && loudness.truePeakDBTP > -1.0 && (
-              <div className="metric-sub" style={{ color: 'var(--danger)' }}>Exceeds -1.0 dBTP</div>
-            )}
           </div>
           <div className="metric">
             <Label text="Loudness Range" tip="楽曲内の音量変動幅。値が大きいほどダイナミクスが豊か" />
-            <div className="metric-value small">
+            <div className="metric-value" style={{ color: lrColor }}>
               {loudness ? <>{loudness.loudnessRange.toFixed(1)}<span className="metric-unit">LU</span></> : DASH}
             </div>
           </div>
           <div className="metric">
             <Label text="Stereo Width" tip="ステレオの広がり。Mid/Side比率で算出。0%=モノラル、100%=フルステレオ" />
-            <div className="metric-value">
+            <div className="metric-value" style={{ color: swColor }}>
               {widthPercent != null ? <>{widthPercent.toFixed(1)}<span className="metric-unit">%</span></> : DASH}
             </div>
-            {widthLabel && <div className="metric-sub">{widthLabel}</div>}
           </div>
         </div>
       </section>
@@ -163,40 +232,48 @@ export function AnalysisPanel({ result, fileInfo }: Props) {
         <div className="metric-grid">
           <div className="metric">
             <Label text="先頭サンプル" tip="最初のサンプルがゼロか確認。非ゼロだとクリックノイズの原因に" />
-            <div className="metric-value small">
+            <div className="metric-value" style={{ color: startColor }}>
               {quality
-                ? (quality.startIsZero
-                  ? <span style={{ color: 'var(--success)' }}>OK</span>
-                  : <span style={{ color: 'var(--warning)' }}>注意: {quality.startAmplitude.toFixed(4)}</span>)
+                ? (quality.startIsZero ? 'OK' : quality.startAmplitude.toFixed(4))
                 : DASH
               }
             </div>
           </div>
           <div className="metric">
             <Label text="末尾サンプル" tip="最後のサンプルがゼロか確認。非ゼロだとクリックノイズの原因に" />
-            <div className="metric-value small">
+            <div className="metric-value" style={{ color: endColor }}>
               {quality
-                ? (quality.endIsZero
-                  ? <span style={{ color: 'var(--success)' }}>OK</span>
-                  : <span style={{ color: 'var(--warning)' }}>注意: {quality.endAmplitude.toFixed(4)}</span>)
+                ? (quality.endIsZero ? 'OK' : quality.endAmplitude.toFixed(4))
                 : DASH
               }
             </div>
           </div>
           <div className="metric">
             <Label text="冒頭無音" tip="ファイル先頭の無音区間の長さ" />
-            <div className="metric-value small">
+            <div className="metric-value" style={{ color: headColor }}>
               {quality ? <>{quality.headSilence.toFixed(3)}<span className="metric-unit">秒</span></> : DASH}
             </div>
           </div>
           <div className="metric">
             <Label text="末尾無音" tip="ファイル末尾の無音区間の長さ" />
-            <div className="metric-value small">
+            <div className="metric-value" style={{ color: tailColor }}>
               {quality ? <>{quality.tailSilence.toFixed(3)}<span className="metric-unit">秒</span></> : DASH}
             </div>
           </div>
         </div>
       </section>
+
+      {/* ── 分析結果 ── */}
+      {comments.length > 0 && (
+        <section className="panel-section">
+          <div className="panel-title">分析結果</div>
+          <ul className="warning-list">
+            {comments.map((c, i) => (
+              <li key={i} className={`warning-item warning-${c.level}`}>{c.msg}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
     </div>
   );

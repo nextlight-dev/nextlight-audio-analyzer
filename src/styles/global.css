@@ -287,6 +287,17 @@ body {
   font-weight: 700;
 }
 
+.warning-safe {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.08);
+  border-left: 3px solid var(--success);
+}
+
+.warning-safe::before {
+  content: '\2713';
+  font-weight: 700;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -357,12 +368,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.metric-value.small {
-  font-size: 1.1rem;
-}
-
 .metric-unit {
-  font-size: 0.8rem;
+  font-size: inherit;
   color: var(--text-dim);
   margin-left: 4px;
 }
