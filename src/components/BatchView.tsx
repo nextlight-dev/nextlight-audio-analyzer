@@ -25,15 +25,29 @@ function statusClass(status: BatchItem['status']): string {
 }
 
 function lufsColor(lufs: number): string {
-  if (lufs > -8) return 'var(--danger)';
-  if (lufs > -14) return 'var(--warning)';
+  if (lufs > -6) return 'var(--danger)';
+  if (lufs < -9) return 'var(--warning)';
   return 'var(--success)';
 }
 
 function tpColor(tp: number): string {
-  if (tp > -1.0) return 'var(--danger)';
-  if (tp > -2.0) return 'var(--warning)';
-  return 'var(--text-primary)';
+  if (tp > 1.5) return 'var(--danger)';
+  return 'var(--success)';
+}
+
+function lrColor(lr: number): string {
+  if (lr < 2.5 || lr > 6.0) return 'var(--warning)';
+  return 'var(--success)';
+}
+
+function swColor(w: number): string {
+  if (w < 20 || w > 60) return 'var(--warning)';
+  return 'var(--success)';
+}
+
+function durationColor(sec: number): string {
+  if (sec >= 120 && sec <= 210) return 'var(--success)';
+  return 'var(--warning)';
 }
 
 export function BatchView() {
@@ -139,17 +153,17 @@ export function BatchView() {
                   <tr key={item.id}>
                     <td className="batch-td-num">{idx + 1}</td>
                     <td className="batch-td-name" title={item.file.name}>{item.file.name}</td>
-                    <td className="batch-td-mono">{fi ? formatDuration(fi.duration) : '—'}</td>
+                    <td className="batch-td-mono" style={fi ? { color: durationColor(fi.duration) } : undefined}>{fi ? formatDuration(fi.duration) : '—'}</td>
                     <td className="batch-td-mono" style={l ? { color: lufsColor(l.integratedLUFS) } : undefined}>
                       {l ? (isFinite(l.integratedLUFS) ? l.integratedLUFS.toFixed(1) : '---') : '—'}
                     </td>
                     <td className="batch-td-mono" style={l ? { color: tpColor(l.truePeakDBTP) } : undefined}>
                       {l ? (isFinite(l.truePeakDBTP) ? l.truePeakDBTP.toFixed(1) : '---') : '—'}
                     </td>
-                    <td className="batch-td-mono">
+                    <td className="batch-td-mono" style={l ? { color: lrColor(l.loudnessRange) } : undefined}>
                       {l ? `${l.loudnessRange.toFixed(1)}` : '—'}
                     </td>
-                    <td className="batch-td-mono">
+                    <td className="batch-td-mono" style={s ? { color: swColor(Math.min(s.width * 100, 200)) } : undefined}>
                       {s ? `${Math.min(s.width * 100, 200).toFixed(0)}%` : '—'}
                     </td>
                     <td>

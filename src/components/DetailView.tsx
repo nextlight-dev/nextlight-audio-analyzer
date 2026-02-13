@@ -4,7 +4,7 @@ import { ProgressBar } from './ProgressBar';
 import { WaveformPlayer } from './WaveformPlayer';
 import { AnalysisPanel } from './AnalysisPanel';
 import { LoudnessTimeChart } from '../charts/LoudnessTimeChart';
-import { useAudioFile, audioBufferToMono, getFileFormat } from '../hooks/useAudioFile';
+import { useAudioFile, audioBufferToMono, getFileFormat, getOriginalSampleRate } from '../hooks/useAudioFile';
 import { useAnalysis } from '../hooks/useAnalysis';
 import type { FileInfo } from '../analysis/types';
 
@@ -16,7 +16,10 @@ export function DetailView() {
 
   const handleFile = useCallback(async (f: File) => {
     try {
-      const buf = await decode(f);
+      const [buf, originalSR] = await Promise.all([
+        decode(f),
+        getOriginalSampleRate(f),
+      ]);
       const mono = audioBufferToMono(buf);
       setMonoData(mono);
 
@@ -26,7 +29,7 @@ export function DetailView() {
       const info: FileInfo = {
         name: f.name,
         duration: buf.duration,
-        sampleRate: buf.sampleRate,
+        sampleRate: originalSR,
         channels: buf.numberOfChannels,
         format: getFileFormat(f.name),
       };

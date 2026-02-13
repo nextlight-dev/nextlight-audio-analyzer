@@ -59,6 +59,15 @@ export function getFileFormat(name: string): string {
   return formats[ext] ?? ext.toUpperCase();
 }
 
+export async function getOriginalSampleRate(file: File): Promise<number> {
+  const arrayBuffer = await file.arrayBuffer();
+  const ctx = new AudioContext();
+  const buf = await ctx.decodeAudioData(arrayBuffer);
+  const sr = buf.sampleRate;
+  await ctx.close();
+  return sr;
+}
+
 export function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
