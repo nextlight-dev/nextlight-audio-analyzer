@@ -27,21 +27,25 @@ export function LoudnessTimeChart({ momentary, shortTerm, integratedLUFS, durati
 
   if (momentary.length === 0 && shortTerm.length === 0) return null;
 
-  const downsample = (arr: number[], maxPoints: number) => {
-    if (arr.length <= maxPoints) return arr;
-    const factor = Math.floor(arr.length / maxPoints);
+  // 全データセットを同じ点数にリサンプル（線形補間）
+  const resampleTo = (arr: number[], target: number): number[] => {
+    if (arr.length === 0 || target === 0) return [];
+    if (arr.length === target) return arr;
     const result: number[] = [];
-    for (let i = 0; i < arr.length; i += factor) {
-      const chunk = arr.slice(i, i + factor);
-      result.push(Math.max(...chunk));
+    for (let i = 0; i < target; i++) {
+      const pos = (i / (target - 1)) * (arr.length - 1);
+      const lo = Math.floor(pos);
+      const hi = Math.min(lo + 1, arr.length - 1);
+      const frac = pos - lo;
+      result.push(arr[lo] * (1 - frac) + arr[hi] * frac);
     }
     return result;
   };
 
   const maxPoints = 500;
-  const dsMomentary = downsample(momentary, maxPoints);
-  const dsShortTerm = downsample(shortTerm, maxPoints);
-  const numPoints = Math.max(dsMomentary.length, dsShortTerm.length);
+  const numPoints = Math.min(maxPoints, Math.max(momentary.length, shortTerm.length));
+  const dsMomentary = momentary.length > 0 ? resampleTo(momentary, numPoints) : [];
+  const dsShortTerm = shortTerm.length > 0 ? resampleTo(shortTerm, numPoints) : [];
   const labels = Array.from({ length: numPoints }, (_, i) =>
     ((i / numPoints) * duration).toFixed(1)
   );
