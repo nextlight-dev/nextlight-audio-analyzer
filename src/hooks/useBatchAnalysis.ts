@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { AudioAnalyzer } from '../analysis/analyzer';
-import { audioBufferToMono, getFileFormat } from './useAudioFile';
+import { audioBufferToMono, getFileFormat, getOriginalSampleRate } from './useAudioFile';
 import type { AnalysisResult, FileInfo } from '../analysis/types';
 
 export type BatchStatus = 'pending' | 'decoding' | 'analyzing' | 'done' | 'error';
@@ -73,10 +73,11 @@ export function useBatchAnalysis() {
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         await audioCtx.close();
 
+        const originalSR = await getOriginalSampleRate(item.file);
         const fileInfo: FileInfo = {
           name: item.file.name,
           duration: audioBuffer.duration,
-          sampleRate: audioBuffer.sampleRate,
+          sampleRate: originalSR,
           channels: audioBuffer.numberOfChannels,
           format: getFileFormat(item.file.name),
         };
